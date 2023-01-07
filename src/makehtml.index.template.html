@@ -31,9 +31,7 @@
       </div>
     </div>
   </div>
-  {% assign devices = device | sort_natural %}
-  {% for devicekv in devices %}
-  {% assign device = devicekv[1] %}
+  {% for device in devices %}
   <div class=row>
     <div class=col-sm-4>
       <div>

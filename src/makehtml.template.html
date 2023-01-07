@@ -99,7 +99,7 @@ nav.menu a {
     <div class=col-sm-9>
     </div>
   </div>
-  {% assign peripherals = device.peripherals | sort_natural %}
+  {% assign peripherals = device.peripherals %}
   <nav class="menu">
     {% for kv in peripherals %}
       <a href="#{{ kv[0] }}">{{ kv[0] }}</a>
@@ -110,7 +110,6 @@ nav.menu a {
   {% assign peripheral = peripheralkv[1] %}
   <div class=row>
     <div class="col-sm-12 peripheral">
-      {% assign registers = peripheral.registers | sort_natural %}
       <h3>
         <a name="{{ pname }}"></a>
         {{ pname }}
@@ -139,8 +138,7 @@ nav.menu a {
             <th class=vertical><div>{{ i }}</div></th>
             {% endfor %}
           </tr>
-          {% for registerkv in registers %}
-          {% assign register = registerkv[1] %}
+          {% for register in peripheral.registers %}
             <tr>
               <td>{{ register.offset }}</td>
               <td>{{ register.name }}</td>
@@ -163,8 +161,7 @@ nav.menu a {
         </table>
       </div>
       <div class="container registers" id="{{ pname }}-registers">
-        {% for registerkv in registers %}
-        {% assign register = registerkv[1] %}
+        {% for register in peripheral.registers %}
         <div class=row>
           <div class="col-sm-11 register">
             <h4>

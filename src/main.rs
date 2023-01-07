@@ -6,11 +6,13 @@ use std::io::{Read, Write};
 use std::os::linux::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
+use anyhow::{anyhow, Context};
 use liquid::{
     model::{object, Scalar},
     Object,
 };
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use svd_parser::expand::{derive_enumerated_values, BlockPath, RegisterPath};
 use svd_parser::{
     expand::{derive_peripheral, Index},
     svd::{Access, Cluster, Register, RegisterInfo, WriteConstraint},
@@ -20,7 +22,7 @@ fn hex(val: u64) -> String {
     format!("0x{val:x}")
 }
 
-fn generate_index_page(devices: &Object, writer: &mut dyn Write) -> anyhow::Result<()> {
+fn generate_index_page(devices: &Vec<Object>, writer: &mut dyn Write) -> anyhow::Result<()> {
     println!("Generating Index");
     let template_file = include_str!("makehtml.index.template.html");
     let template = liquid::ParserBuilder::with_stdlib()
@@ -76,35 +78,49 @@ impl GetI64 for Object {
 /// with their names updated to include the cluster index and their address
 /// offsets updated to include the cluster address offset.
 /// The returned register nodes are as though they were never in a cluster.
-pub fn expand_cluster(ctag: &Cluster) -> Vec<Register> {
+pub fn parse_cluster(
+    ctag: &Cluster,
+    registers: &mut Vec<Object>,
+    cpath: &BlockPath,
+    index: &Index,
+) -> anyhow::Result<()> {
     match ctag {
         Cluster::Single(c) => {
-            let mut registers: Vec<Register> = c.registers().cloned().collect();
+            let mut regs: Vec<Register> = c.registers().cloned().collect();
             let cluster_addr = c.address_offset;
-            for r in &mut registers {
+            for r in &mut regs {
+                let rpath = cpath.new_register(&r.name);
                 r.name = format!("{} [0]", r.name);
                 r.address_offset = cluster_addr + r.address_offset;
+                parse_register_array(&r, registers, &rpath, &index)?;
             }
-            registers
         }
         Cluster::Array(c, d) => {
-            let mut registers: Vec<Register> = c.registers().cloned().collect();
             for (i, cluster_idx) in d.indexes().enumerate() {
+                let mut regs: Vec<Register> = c.registers().cloned().collect();
                 let cluster_addr = c.address_offset + (i as u32) * d.dim_increment;
-                for r in &mut registers {
+                for r in &mut regs {
+                    let rpath = cpath.new_register(&r.name);
                     r.name = format!("{} [{cluster_idx}]", r.name);
                     r.address_offset = cluster_addr + r.address_offset;
+                    parse_register_array(&r, registers, &rpath, &index)?;
                 }
             }
-            registers
         }
     }
+    Ok(())
 }
 
-pub fn parse_register_array(rtag: &Register, registers: &mut Vec<Object>) {
+pub fn parse_register_array(
+    rtag: &Register,
+    registers: &mut Vec<Object>,
+    rpath: &RegisterPath,
+    index: &Index,
+) -> anyhow::Result<()> {
     match rtag {
         Register::Single(r) => {
-            let register = parse_register(r);
+            let register = parse_register(r, &rpath, index)
+                .with_context(|| format!("In register {}", r.name))?;
             registers.push(register);
         }
         Register::Array(r, d) => {
@@ -113,14 +129,20 @@ pub fn parse_register_array(rtag: &Register, registers: &mut Vec<Object>) {
                 r.name = r.name.replace("%s", &idx);
                 r.address_offset = r.address_offset + (i as u32) * d.dim_increment;
                 r.description = r.description.map(|d| d.replace("%s", &idx));
-                let register = parse_register(&r);
+                let register = parse_register(&r, &rpath, index)
+                    .with_context(|| format!("In register {}", r.name))?;
                 registers.push(register);
             }
         }
     }
+    Ok(())
 }
 
-pub fn parse_register(rtag: &RegisterInfo) -> Object {
+pub fn parse_register(
+    rtag: &RegisterInfo,
+    rpath: &RegisterPath,
+    index: &Index,
+) -> anyhow::Result<Object> {
     let mut fields = Vec::new();
     let mut register_fields_total = 0;
     let mut register_fields_documented = 0;
@@ -136,6 +158,8 @@ pub fn parse_register(rtag: &RegisterInfo) -> Object {
     for &ftag in &flds {
         register_fields_total += 1;
 
+        let fpath = rpath.new_field(&ftag.name);
+
         let foffset = ftag.bit_offset();
         let faccs = ftag.access.map(Access::as_str).unwrap_or(raccs);
         let enums = ftag.enumerated_values.get(0);
@@ -143,11 +167,15 @@ pub fn parse_register(rtag: &RegisterInfo) -> Object {
         let mut doc = String::new();
         if enums.is_some() || wc.is_some() || faccs == "read-only" {
             register_fields_documented += 1;
-            if let Some(enums) = enums.as_ref() {
+            if let Some(enums) = enums {
                 doc = "Allowed values:<br>".to_string();
-                if let Some(_dfname) = enums.derived_from.as_ref() {
-                    todo!()
-                }
+                let enums = if let Some(dfname) = enums.derived_from.as_ref() {
+                    let mut enums = enums.clone();
+                    derive_enumerated_values(&mut enums, dfname, &fpath, index)?;
+                    Cow::Owned(enums)
+                } else {
+                    Cow::Borrowed(enums)
+                };
 
                 for value in &enums.values {
                     doc += "<strong>";
@@ -168,19 +196,34 @@ pub fn parse_register(rtag: &RegisterInfo) -> Object {
             "name": ftag.name,
             "offset": foffset,
             "width": ftag.bit_width(),
+            "msb": ftag.msb(),
             "description": ftag.description,
             "doc": doc,
             "access": faccs,
         }));
     }
 
-    let mut table = vec![vec![object!({"name": "", "width": 1, "doc": false}); 16]; 2];
+    let mut table = vec![
+        vec![
+            object!({
+                "name": "",
+                "width": 1,
+                "doc": false,
+                "access": "",
+            });
+            16
+        ];
+        2
+    ];
 
     for &ftag in flds.iter().rev() {
         let foffset = ftag.bit_offset();
         let faccs = ftag.access.map(Access::as_str).unwrap_or(raccs);
         let access = short_access(faccs);
         let fwidth = ftag.bit_width();
+        if foffset + fwidth > 32 {
+            return Err(anyhow!("Wrong field offset/width"));
+        }
         let fdoc = !ftag.enumerated_values.is_empty() || ftag.write_constraint.is_some();
         for idx in foffset..(foffset + fwidth) {
             let trowidx = ((31 - idx) / 16) as usize;
@@ -191,6 +234,7 @@ pub fn parse_register(rtag: &RegisterInfo) -> Object {
                 "doc": fdoc,
                 "access": access,
                 "separated": separated,
+                "width": table[trowidx][tcolidx].get("width"),
             });
             table[trowidx][tcolidx] = tcell;
         }
@@ -220,18 +264,18 @@ pub fn parse_register(rtag: &RegisterInfo) -> Object {
         100.
     };
 
-    object!({
+    Ok(object!({
         "name": rtag.name,
         "offset": hex(rtag.address_offset as _),
         "description": rtag.description,
-        "resetValue": rtag.properties.reset_value.unwrap(),
+        "resetValue": rtag.properties.reset_value.unwrap_or_default(),
         "access": raccs,
         "fields": fields,
         "table": table,
         "fields_total": register_fields_total,
         "fields_documented": register_fields_documented,
         "width": width,
-    })
+    }))
 }
 
 pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
@@ -250,21 +294,29 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         let mut peripheral_fields_total = 0;
         let mut peripheral_fields_documented = 0;
         let pname = &ptag.name;
+        let mut ppath = BlockPath::new(&ptag.name);
         let ptag = if let Some(dfname) = ptag.derived_from.as_ref() {
             let mut ptag = ptag.clone();
-            derive_peripheral(&mut ptag, dfname, &index)?;
+            if let Some(path) = derive_peripheral(&mut ptag, dfname, &index)? {
+                ppath = path;
+            }
             Cow::Owned(ptag)
         } else {
             Cow::Borrowed(ptag)
         };
         for ctag in ptag.clusters() {
-            for rtag in expand_cluster(ctag) {
-                parse_register_array(&rtag, &mut registers);
-            }
+            let cpath = ppath.new_cluster(&ctag.name);
+            parse_cluster(&ctag, &mut registers, &cpath, &index)
+                .with_context(|| format!("In cluster {}", ctag.name))
+                .with_context(|| format!("In peripheral {}", ptag.name))?;
         }
         for rtag in ptag.registers() {
-            parse_register_array(&rtag, &mut registers);
+            let rpath = ppath.new_register(&rtag.name);
+            parse_register_array(&rtag, &mut registers, &rpath, &index)
+                .with_context(|| format!("In peripheral {}", ptag.name))?;
         }
+
+        registers.sort_by_key(|r| r.get_i64("offset"));
 
         for register in &registers {
             peripheral_fields_total += register.get_i64("fields_total").unwrap();
@@ -285,8 +337,6 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
                 "registers": registers,
                 "fields_total": peripheral_fields_total,
                 "fields_documented": peripheral_fields_documented,
-                "last-modified": temp,
-                "svdfile": svdfile.to_str().unwrap(),
                 "width": width,
             })
             .into(),
@@ -307,13 +357,16 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         "peripherals": peripherals,
         "fields_total": device_fields_total,
         "fields_documented": device_fields_documented,
+        "last-modified": temp,
+        "svdfile": svdfile.to_str().unwrap(),
         "width": width,
     }))
 }
 
 pub fn process_svd(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
-    println!("Processing {}", svdfile.as_ref().to_str().unwrap());
-    parse_device(svdfile)
+    let svdfile = svdfile.as_ref().to_str().unwrap();
+    println!("Processing {}", svdfile);
+    parse_device(svdfile).with_context(|| format!("In file {svdfile}"))
 }
 
 use clap::Parser;
@@ -354,12 +407,15 @@ fn main() -> anyhow::Result<()> {
         for entry in std::fs::read_dir(args.svdfiles)? {
             let entry = entry?;
             let path = entry.path();
-            if path.ends_with(".patched") {
-                svdfiles.push(path);
+            match path.extension() {
+                Some(ext) if ext == "patched" => {
+                    svdfiles.push(path);
+                }
+                _ => {}
             }
         }
     }
-    let devices = svdfiles
+    let mut devices = svdfiles
         .par_iter()
         .map(|f| {
             let device = process_svd(f).unwrap();
@@ -367,13 +423,9 @@ fn main() -> anyhow::Result<()> {
             device
         })
         .collect::<Vec<_>>();
+    devices.sort_by_key(|d| d.get_str("name").map(|s| s.to_lowercase()));
 
-    let mut index_object = Object::new();
-    for d in devices {
-        let k = d.get_str("name").unwrap().to_string().into();
-        index_object.insert(k, d.into());
-    }
     let mut file = std::fs::File::create(args.htmldir.join("index.html"))?;
-    generate_index_page(&index_object, &mut file)?;
+    generate_index_page(&devices, &mut file)?;
     Ok(())
 }
