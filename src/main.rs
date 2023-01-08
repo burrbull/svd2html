@@ -12,7 +12,9 @@ use liquid::{
     Object,
 };
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use svd_parser::expand::{derive_enumerated_values, BlockPath, RegisterPath};
+use svd_parser::expand::{
+    derive_cluster, derive_enumerated_values, derive_register, BlockPath, RegisterPath,
+};
 use svd_parser::{
     expand::{derive_peripheral, Index},
     svd::{Access, Cluster, Register, RegisterInfo, WriteConstraint},
@@ -111,7 +113,14 @@ pub fn parse_cluster(
     cpath: &BlockPath,
     index: &Index,
 ) -> anyhow::Result<()> {
-    match ctag {
+    let ctag = if let Some(dfname) = ctag.derived_from.as_ref() {
+        let mut ctag = ctag.clone();
+        derive_cluster(&mut ctag, dfname, &cpath.parent().unwrap(), index)?;
+        Cow::Owned(ctag)
+    } else {
+        Cow::Borrowed(ctag)
+    };
+    match ctag.as_ref() {
         Cluster::Single(c) => {
             let mut regs: Vec<Register> = c.registers().cloned().collect();
             let cluster_addr = c.address_offset;
@@ -144,7 +153,14 @@ pub fn parse_register_array(
     rpath: &RegisterPath,
     index: &Index,
 ) -> anyhow::Result<()> {
-    match rtag {
+    let rtag = if let Some(dfname) = rtag.derived_from.as_ref() {
+        let mut rtag = rtag.clone();
+        derive_register(&mut rtag, dfname, &rpath.block, index)?;
+        Cow::Owned(rtag)
+    } else {
+        Cow::Borrowed(rtag)
+    };
+    match rtag.as_ref() {
         Register::Single(r) => {
             let register = parse_register(r, rpath, index)
                 .with_context(|| format!("In register {}", r.name))?;
