@@ -197,12 +197,18 @@ pub fn parse_register(
     let mut flds = rtag.fields().collect::<Vec<_>>();
     flds.sort_by_key(|f| f.bit_offset());
 
+    let mut filling = 0_u64;
+
     for &ftag in &flds {
         register_fields_total += 1;
 
         let fpath = rpath.new_field(&ftag.name);
 
         let foffset = ftag.bit_offset();
+        let fwidth = ftag.bit_width();
+        let bit_mask = (u64::MAX >> (u64::BITS - fwidth)) << foffset;
+        filling |= bit_mask;
+
         let faccs = ftag.access.map(Access::as_str).unwrap_or(raccs);
         let enums = ftag.enumerated_values.get(0);
         let wc = &ftag.write_constraint;
@@ -238,7 +244,7 @@ pub fn parse_register(
         fields.push(object!({
             "name": ftag.name,
             "offset": foffset,
-            "width": ftag.bit_width(),
+            "width": fwidth,
             "msb": ftag.msb(),
             "description": ftag.description.as_deref().map(sanitize),
             "doc": fdoc,
@@ -296,8 +302,10 @@ pub fn parse_register(
         }
     }
     let table = vec![
-        object!({"headers": (16..32).rev().collect::<Vec<_>>(), "fields": table[0]}),
-        object!({"headers": (0..16).rev().collect::<Vec<_>>(), "fields": table[1]}),
+        (filling > u16::MAX as _)
+            .then(|| object!({"headers": (16..32).rev().collect::<Vec<_>>(), "fields": table[0]})),
+        (filling > 0)
+            .then(|| object!({"headers": (0..16).rev().collect::<Vec<_>>(), "fields": table[1]})),
     ];
 
     let progress = if register_fields_total > 0 {

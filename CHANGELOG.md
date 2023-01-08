@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- 1 row for 16-bit registers
+
 ## [v0.1.0] - 2022-01-08
 
 ### Fixed

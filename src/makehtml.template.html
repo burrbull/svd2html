@@ -141,7 +141,7 @@ nav.menu a {
             <tr>
               <td>{{ register.offset }}{% if register.size != 32 %} ({{ register.size }}-bit){% endif %}</td>
               <td>{{ register.name }}</td>
-              {% for row in register.table %}
+              {% for row in register.table %}{% if row %}
                 {% for field in row.fields %}
                   {% unless field.name %}
                     {% for _ in (1..field.width) %}
@@ -154,7 +154,7 @@ nav.menu a {
                     </td>
                   {% endif %}
                 {% endfor %}
-              {% endfor %}
+              {% else %}{% for _ in (1..16) %}<td></td>{% endfor %}{% endif %}{% endfor %}
             </tr>
           {% endfor %}
         </tbody></table>
@@ -171,7 +171,7 @@ nav.menu a {
               </a>
             </h4>
             <p>{{ register.description }}</p>
-            <p>Offset: {{ register.offset }}, reset: {{ register.resetValue }}, access: {{ register.access }}</p>
+            <p>Offset: {{ register.offset }}, size: {{ register.size }}, reset: {{ register.resetValue }}, access: {{ register.access }}</p>
             <div class="progress">
               
               <div class="progress-bar progress-bar-success" style="width: {{ register.progress }}%"></div>
@@ -186,7 +186,7 @@ nav.menu a {
               <div class="row">
                 <div class="col-sm-10">
                   <table class="table table-striped table-bordered bitfield">
-                    <tbody>{% for row in register.table %}
+                    <tbody>{% for row in register.table %}{% if row %}
                     <tr>
                       {% for header in row.headers %}
                       <th>{{ header }}</th>
@@ -209,7 +209,7 @@ nav.menu a {
                       </td>
                       {% endfor %}
                     </tr>
-                    {% endfor %}
+                    {% endif %}{% endfor %}
                   </tbody></table>
                   <a href="#" class="toggle-fields">Toggle Fields</a>
                 </div>
