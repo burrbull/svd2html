@@ -126,7 +126,8 @@ pub fn parse_register_array(
         Register::Array(r, d) => {
             let mut r = r.clone();
             for (i, idx) in d.indexes().enumerate() {
-                r.name = r.name.replace("%s", &idx);
+                let idxs = format!("[{idx}]");
+                r.name = r.name.replace("[%s]", &idxs).replace("%s", &idxs);
                 r.address_offset = r.address_offset + (i as u32) * d.dim_increment;
                 r.description = r.description.map(|d| d.replace("%s", &idx));
                 let register = parse_register(&r, &rpath, index)
@@ -206,7 +207,6 @@ pub fn parse_register(
     let mut table = vec![
         vec![
             object!({
-                "name": "",
                 "width": 1,
                 "doc": false,
                 "access": "",
@@ -264,11 +264,13 @@ pub fn parse_register(
         100.
     };
 
+    let offset = rtag.address_offset;
     Ok(object!({
         "name": rtag.name,
-        "offset": hex(rtag.address_offset as _),
+        "offset_int": offset,
+        "offset": hex(offset as _),
         "description": rtag.description,
-        "resetValue": rtag.properties.reset_value.unwrap_or_default(),
+        "resetValue": format!("0x{:08x}", rtag.properties.reset_value.unwrap_or_default()),
         "access": raccs,
         "fields": fields,
         "table": table,
@@ -290,7 +292,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
     let mut device_fields_total = 0;
     let mut device_fields_documented = 0;
     let mut ptags = device.peripherals.iter().collect::<Vec<_>>();
-    ptags.sort_by_key(|p| &p.name);
+    ptags.sort_by_key(|p| p.name.to_lowercase());
     for ptag in ptags {
         let mut registers = Vec::new();
         let mut peripheral_fields_total = 0;
@@ -318,7 +320,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
                 .with_context(|| format!("In peripheral {}", ptag.name))?;
         }
 
-        registers.sort_by_key(|r| r.get_i64("offset"));
+        registers.sort_by_key(|r| r.get_i64("offset_int"));
 
         for register in &registers {
             peripheral_fields_total += register.get_i64("fields_total").unwrap();
@@ -332,7 +334,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         };
         peripherals.push(object!({
             "name": pname,
-            "base": ptag.base_address,
+            "base": format!("0x{:08x}", ptag.base_address),
             "description": ptag.description,
             "registers": registers,
             "fields_total": peripheral_fields_total,
@@ -412,6 +414,9 @@ fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
+    }
+    if !args.htmldir.exists() {
+        std::fs::create_dir(&args.htmldir)?;
     }
     let mut devices = svdfiles
         .par_iter()

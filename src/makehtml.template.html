@@ -74,8 +74,8 @@ nav.menu a {
         <li class="active"><a href="#">{{ device.name }} Peripheral Coverage</a></li>
       </ul>
       <ul class="nav navbar-nav navbar-right">
-        <li><a href=# id="show-all-registers">Show All Registers</a></li>
-        <li><a href=# id="hide-all-registers">Hide All Registers</a></li>
+        <li><a href="#" id="show-all-registers">Show All Registers</a></li>
+        <li><a href="#" id="hide-all-registers">Hide All Registers</a></li>
       </ul>
     </div>
   </div>
@@ -125,9 +125,9 @@ nav.menu a {
           {{ peripheral.fields_documented }}/{{peripheral.fields_total }}
           fields covered.
         </em>
-        <a class="toggle-registers" href=#>Toggle Registers</a>
+        <a class="toggle-registers" href="#">Toggle Registers</a>
       </p>
-      <p><a class="toggle-register-map" href=#>Show register map</a></p>
+      <p><a class="toggle-register-map" href="#">Show register map</a></p>
       <div class="register-map" id="{{ pname }}-register-map">
         <table class="table table-bordered register-map-table">
           <tr>
@@ -145,11 +145,11 @@ nav.menu a {
                 {% for field in row.fields %}
                   {% unless field.name %}
                     {% for _ in (1..field.width) %}
-                    <td {% if field.separated %}class="separated"{% endif %}></td>
+                    <td{% if field.separated %} class="separated"{% endif %}></td>
                     {% endfor %}
                   {% endunless %}
                   {% if field.name %}
-                    <td colspan={{ field.width }} class="vertical{% if field.separated %} separated{% endif %}">
+                    <td colspan="{{ field.width }}" class="vertical{% if field.separated %} separated{% endif %}">
                       <div><a class="fieldlink" href="#{{ pname }}:{{ register.name }}:{{ field.name }}">{{ field.name }}</a></div>
                     </td>
                   {% endif %}
@@ -194,7 +194,7 @@ nav.menu a {
                     </tr>
                     <tr>
                       {% for field in row.fields %}
-                      <td colspan={{ field.width }} {% if field.separated %} class="separated"{% endif %}>
+                      <td colspan="{{ field.width }}"{% if field.separated %} class="separated"{% endif %}>
                         {% if field.name %}
                         <a class="fieldlink" href="#{{ pname }}:{{ register.name }}:{{ field.name }}">
                         {% if field.doc %}
@@ -211,7 +211,7 @@ nav.menu a {
                     </tr>
                     {% endfor %}
                   </table>
-                  <a href=# class="toggle-fields">Toggle Fields</a>
+                  <a href="#" class="toggle-fields">Toggle Fields</a>
                 </div>
               </div>
             </div>
