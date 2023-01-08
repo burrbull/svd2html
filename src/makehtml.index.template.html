@@ -11,8 +11,8 @@
 <body>
 
 <nav class="navbar navbar-inverse">
-  <div class=container>
-    <div class=navbar-header>
+  <div class="container">
+    <div class="navbar-header">
       <a class="navbar-brand active" href="#"">stm32-rs Device Coverage</a>
     </div>
     <div class="navbar-collapse collapse">
@@ -23,17 +23,17 @@
   </div>
 </nav>
 
-<div class=container>
-  <div class=row>
-    <div class=col-sm-12>
+<div class="container">
+  <div class="row">
+    <div class="col-sm-12">
       <div>
         <h3>Available Devices</h3>
       </div>
     </div>
   </div>
   {% for device in devices %}
-  <div class=row>
-    <div class=col-sm-4>
+  <div class="row">
+    <div class="col-sm-4">
       <div>
         <a href="{{ device.name }}.html"><strong>{{ device.name }}</strong></a>
         <a href="{{ device.name|downcase }}.svd.patched">(svd)</a>:
@@ -41,8 +41,8 @@
         documented
       </div>
     </div>
-    <div class=col-sm-8>
-      <div class=progress>
+    <div class="col-sm-8">
+      <div class="progress">
         <div class="progress-bar progress-bar-success" style="width: {{ device.width }}%"></div>
       </div>
     </div>

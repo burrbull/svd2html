@@ -286,10 +286,12 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
     file.read_to_string(&mut xml)?;
     let device = svd_parser::parse(&xml)?;
     let index = Index::create(&device);
-    let mut peripherals = Object::new();
+    let mut peripherals = Vec::new();
     let mut device_fields_total = 0;
     let mut device_fields_documented = 0;
-    for ptag in &device.peripherals {
+    let mut ptags = device.peripherals.iter().collect::<Vec<_>>();
+    ptags.sort_by_key(|p| &p.name);
+    for ptag in ptags {
         let mut registers = Vec::new();
         let mut peripheral_fields_total = 0;
         let mut peripheral_fields_documented = 0;
@@ -328,19 +330,15 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         } else {
             100.
         };
-        peripherals.insert(
-            pname.into(),
-            object!({
-                "name": pname,
-                "base": ptag.base_address,
-                "description": ptag.description,
-                "registers": registers,
-                "fields_total": peripheral_fields_total,
-                "fields_documented": peripheral_fields_documented,
-                "width": width,
-            })
-            .into(),
-        );
+        peripherals.push(object!({
+            "name": pname,
+            "base": ptag.base_address,
+            "description": ptag.description,
+            "registers": registers,
+            "fields_total": peripheral_fields_total,
+            "fields_documented": peripheral_fields_documented,
+            "width": width,
+        }));
         device_fields_total += peripheral_fields_total;
         device_fields_documented += peripheral_fields_documented;
     }
