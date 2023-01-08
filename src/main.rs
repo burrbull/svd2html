@@ -64,13 +64,7 @@ fn generate_index_page(devices: &Vec<Object>, writer: &mut dyn Write) -> anyhow:
     Ok(())
 }
 
-fn generate_device_page(device: &Object, writer: &mut dyn Write) -> anyhow::Result<()> {
-    let template_file = include_str!("makehtml.template.html");
-    let template = liquid::ParserBuilder::with_stdlib()
-        .build()
-        .unwrap()
-        .parse(template_file)
-        .unwrap();
+fn generate_device_page(template: &liquid::Template, device: &Object, writer: &mut dyn Write) -> anyhow::Result<()> {
     let globals = liquid::object!({ "device": device });
     template.render_to(writer, &globals)?;
     Ok(())
@@ -436,7 +430,7 @@ struct Args {
     svdfiles: PathBuf,
 }
 
-pub fn generate_if_newer(device: &Object, htmldir: &Path) -> anyhow::Result<()> {
+pub fn generate_if_newer(template: &liquid::Template, device: &Object, htmldir: &Path) -> anyhow::Result<()> {
     let pagename = format!("{}.html", device.get_str("name").unwrap());
     let filename = htmldir.join(&pagename);
     if !filename.is_file()
@@ -447,7 +441,7 @@ pub fn generate_if_newer(device: &Object, htmldir: &Path) -> anyhow::Result<()> 
         let svdfile = Path::new(svdfile.as_ref());
         let svdfile_name = svdfile.file_name().unwrap();
         let mut file = std::fs::File::create(filename)?;
-        generate_device_page(device, &mut file)?;
+        generate_device_page(template, device, &mut file)?;
         std::fs::copy(svdfile, htmldir.join(svdfile_name))?;
     }
 
@@ -472,11 +466,17 @@ fn main() -> anyhow::Result<()> {
     if !args.htmldir.exists() {
         std::fs::create_dir(&args.htmldir)?;
     }
+    let template_file = include_str!("makehtml.template.html");
+    let template = liquid::ParserBuilder::with_stdlib()
+        .build()
+        .unwrap()
+        .parse(template_file)
+        .unwrap();
     let mut devices = svdfiles
         .par_iter()
         .map(|f| {
             let device = process_svd(f).unwrap();
-            generate_if_newer(&device, &args.htmldir).unwrap();
+            generate_if_newer(&template, &device, &args.htmldir).unwrap();
             device
         })
         .collect::<Vec<_>>();
