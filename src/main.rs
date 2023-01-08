@@ -18,8 +18,35 @@ use svd_parser::{
     svd::{Access, Cluster, Register, RegisterInfo, WriteConstraint},
 };
 
+pub fn sanitize(input: &str) -> String {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s*\n\s*").unwrap());
+    static REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[<>&]").unwrap());
+
+    let s = RE.replace_all(input, " ");
+    REGEX
+        .replace_all(&s, |caps: &regex::Captures| {
+            match caps.get(0).unwrap().as_str() {
+                "<" => "&lt;".to_owned(),
+                ">" => "&gt;".to_owned(),
+                "&" => "&amp;".to_owned(),
+                _ => unreachable!(),
+            }
+        })
+        .into()
+}
+
 fn hex(val: u64) -> String {
     format!("0x{val:x}")
+}
+
+fn progress_format(f: f64) -> String {
+    if f.round() == f {
+        format!("{f:.1}")
+    } else {
+        f.to_string()
+    }
 }
 
 fn generate_index_page(devices: &Vec<Object>, writer: &mut dyn Write) -> anyhow::Result<()> {
@@ -91,8 +118,8 @@ pub fn parse_cluster(
             for r in &mut regs {
                 let rpath = cpath.new_register(&r.name);
                 r.name = format!("{} [0]", r.name);
-                r.address_offset = cluster_addr + r.address_offset;
-                parse_register_array(&r, registers, &rpath, &index)?;
+                r.address_offset += cluster_addr;
+                parse_register_array(r, registers, &rpath, index)?;
             }
         }
         Cluster::Array(c, d) => {
@@ -102,8 +129,8 @@ pub fn parse_cluster(
                 for r in &mut regs {
                     let rpath = cpath.new_register(&r.name);
                     r.name = format!("{} [{cluster_idx}]", r.name);
-                    r.address_offset = cluster_addr + r.address_offset;
-                    parse_register_array(&r, registers, &rpath, &index)?;
+                    r.address_offset += cluster_addr;
+                    parse_register_array(r, registers, &rpath, index)?;
                 }
             }
         }
@@ -119,7 +146,7 @@ pub fn parse_register_array(
 ) -> anyhow::Result<()> {
     match rtag {
         Register::Single(r) => {
-            let register = parse_register(r, &rpath, index)
+            let register = parse_register(r, rpath, index)
                 .with_context(|| format!("In register {}", r.name))?;
             registers.push(register);
         }
@@ -128,9 +155,9 @@ pub fn parse_register_array(
             for (i, idx) in d.indexes().enumerate() {
                 let idxs = format!("[{idx}]");
                 r.name = r.name.replace("[%s]", &idxs).replace("%s", &idxs);
-                r.address_offset = r.address_offset + (i as u32) * d.dim_increment;
+                r.address_offset += (i as u32) * d.dim_increment;
                 r.description = r.description.map(|d| d.replace("%s", &idx));
-                let register = parse_register(&r, &rpath, index)
+                let register = parse_register(&r, rpath, index)
                     .with_context(|| format!("In register {}", r.name))?;
                 registers.push(register);
             }
@@ -147,6 +174,7 @@ pub fn parse_register(
     let mut fields = Vec::new();
     let mut register_fields_total = 0;
     let mut register_fields_documented = 0;
+    let rsize = rtag.properties.size.unwrap_or(32);
     let raccs = rtag
         .properties
         .access
@@ -165,11 +193,11 @@ pub fn parse_register(
         let faccs = ftag.access.map(Access::as_str).unwrap_or(raccs);
         let enums = ftag.enumerated_values.get(0);
         let wc = &ftag.write_constraint;
-        let mut doc = String::new();
+        let mut fdoc = None;
         if enums.is_some() || wc.is_some() || faccs == "read-only" {
             register_fields_documented += 1;
             if let Some(enums) = enums {
-                doc = "Allowed values:<br>".to_string();
+                let mut doc = "Allowed values:<br>".to_string();
                 let enums = if let Some(dfname) = enums.derived_from.as_ref() {
                     let mut enums = enums.clone();
                     derive_enumerated_values(&mut enums, dfname, &fpath, index)?;
@@ -184,13 +212,14 @@ pub fn parse_register(
                     doc += ": ";
                     doc += &value.name;
                     doc += "</strong>: ";
-                    doc += value.description.as_deref().unwrap_or("");
+                    doc += &sanitize(value.description.as_deref().unwrap_or(""));
                     doc += "<br>"
                 }
+                fdoc = Some(doc);
             } else if let Some(WriteConstraint::Range(wcrange)) = wc.as_ref() {
                 let mn = hex(wcrange.min);
                 let mx = hex(wcrange.max);
-                doc = format!("Allowed values: {mn}-{mx}");
+                fdoc = Some(format!("Allowed values: {mn}-{mx}"));
             }
         }
         fields.push(object!({
@@ -198,8 +227,8 @@ pub fn parse_register(
             "offset": foffset,
             "width": ftag.bit_width(),
             "msb": ftag.msb(),
-            "description": ftag.description,
-            "doc": doc,
+            "description": ftag.description.as_deref().map(sanitize),
+            "doc": fdoc,
             "access": faccs,
         }));
     }
@@ -221,11 +250,11 @@ pub fn parse_register(
         let faccs = ftag.access.map(Access::as_str).unwrap_or(raccs);
         let access = short_access(faccs);
         let fwidth = ftag.bit_width();
-        if foffset + fwidth > 32 {
+        if foffset + fwidth > rsize {
             return Err(anyhow!("Wrong field offset/width"));
         }
         let fdoc = !ftag.enumerated_values.is_empty() || ftag.write_constraint.is_some();
-        for idx in foffset..(foffset + fwidth) {
+        for idx in foffset..(foffset + fwidth).min(32) {
             let trowidx = ((31 - idx) / 16) as usize;
             let tcolidx = (15 - (idx % 16)) as usize;
             let separated = foffset < 16 && foffset + fwidth > 16;
@@ -258,7 +287,7 @@ pub fn parse_register(
         object!({"headers": (0..16).rev().collect::<Vec<_>>(), "fields": table[1]}),
     ];
 
-    let width = if register_fields_total > 0 {
+    let progress = if register_fields_total > 0 {
         100. * (register_fields_documented as f64 / register_fields_total as f64)
     } else {
         100.
@@ -267,16 +296,17 @@ pub fn parse_register(
     let offset = rtag.address_offset;
     Ok(object!({
         "name": rtag.name,
+        "size": rsize,
         "offset_int": offset,
         "offset": hex(offset as _),
-        "description": rtag.description,
-        "resetValue": format!("0x{:08x}", rtag.properties.reset_value.unwrap_or_default()),
+        "description": rtag.description.as_deref().map(sanitize),
+        "resetValue": format!("0x{:08X}", rtag.properties.reset_value.unwrap_or_default()),
         "access": raccs,
         "fields": fields,
         "table": table,
         "fields_total": register_fields_total,
         "fields_documented": register_fields_documented,
-        "width": width,
+        "progress": progress_format(progress),
     }))
 }
 
@@ -286,7 +316,10 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
     let temp = file.metadata()?.st_mtime();
     let mut xml = String::new();
     file.read_to_string(&mut xml)?;
-    let device = svd_parser::parse(&xml)?;
+    let device = svd_parser::parse_with_config(
+        &xml,
+        &svd_parser::Config::default().expand_properties(true),
+    )?;
     let index = Index::create(&device);
     let mut peripherals = Vec::new();
     let mut device_fields_total = 0;
@@ -310,24 +343,29 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         };
         for ctag in ptag.clusters() {
             let cpath = ppath.new_cluster(&ctag.name);
-            parse_cluster(&ctag, &mut registers, &cpath, &index)
+            parse_cluster(ctag, &mut registers, &cpath, &index)
                 .with_context(|| format!("In cluster {}", ctag.name))
                 .with_context(|| format!("In peripheral {}", ptag.name))?;
         }
         for rtag in ptag.registers() {
             let rpath = ppath.new_register(&rtag.name);
-            parse_register_array(&rtag, &mut registers, &rpath, &index)
+            parse_register_array(rtag, &mut registers, &rpath, &index)
                 .with_context(|| format!("In peripheral {}", ptag.name))?;
         }
 
-        registers.sort_by_key(|r| r.get_i64("offset_int"));
+        registers.sort_by_key(|r| {
+            (
+                r.get_i64("offset_int"),
+                r.get_str("name").map(|s| s.to_lowercase()),
+            )
+        });
 
         for register in &registers {
             peripheral_fields_total += register.get_i64("fields_total").unwrap();
             peripheral_fields_documented += register.get_i64("fields_documented").unwrap();
         }
 
-        let width = if peripheral_fields_total > 0 {
+        let progress = if peripheral_fields_total > 0 {
             100. * (peripheral_fields_documented as f64 / peripheral_fields_total as f64)
         } else {
             100.
@@ -335,11 +373,11 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         peripherals.push(object!({
             "name": pname,
             "base": format!("0x{:08x}", ptag.base_address),
-            "description": ptag.description,
+            "description": ptag.description.as_deref().map(sanitize),
             "registers": registers,
             "fields_total": peripheral_fields_total,
             "fields_documented": peripheral_fields_documented,
-            "width": width,
+            "progress": progress_format(progress),
         }));
         device_fields_total += peripheral_fields_total;
         device_fields_documented += peripheral_fields_documented;
@@ -347,7 +385,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
 
     //let mut object = Object::new();
     //object.insert("name", Value::scalar(device.name.to_string()));
-    let width = if device_fields_total > 0 {
+    let progress = if device_fields_total > 0 {
         100. * (device_fields_documented as f64 / device_fields_total as f64)
     } else {
         100.
@@ -359,7 +397,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         "fields_documented": device_fields_documented,
         "last-modified": temp,
         "svdfile": svdfile.to_str().unwrap(),
-        "width": width,
+        "progress": progress_format(progress),
     }))
 }
 
@@ -394,7 +432,7 @@ pub fn generate_if_newer(device: &Object, htmldir: &Path) -> anyhow::Result<()> 
         let svdfile_name = svdfile.file_name().unwrap();
         let mut file = std::fs::File::create(filename)?;
         generate_device_page(device, &mut file)?;
-        std::fs::copy(svdfile, &htmldir.join(svdfile_name))?;
+        std::fs::copy(svdfile, htmldir.join(svdfile_name))?;
     }
 
     Ok(())

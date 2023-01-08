@@ -9,5 +9,7 @@ edition = "2021"
 anyhow = "1.0.68"
 clap = { version = "4.0.32", features = ["derive"] }
 liquid = "0.26.0"
+once_cell = "1.17.0"
 rayon = "1.6.1"
+regex = "1.7.0"
 svd-parser = { version = "0.14.1", features = ["derive-from", "expand"] }

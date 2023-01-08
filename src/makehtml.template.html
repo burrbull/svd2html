@@ -90,7 +90,7 @@ nav.menu a {
       </div>
       <div class="progress">
         
-        <div class="progress-bar progress-bar-success" style="width: {{ device.width }}%">
+        <div class="progress-bar progress-bar-success" style="width: {{ device.progress }}%">
         </div>
       </div>
     </div>
@@ -118,7 +118,7 @@ nav.menu a {
       <p>{{ peripheral.base }}: {{ peripheral.description }}</p>
       <div class="progress">
         
-        <div class="progress-bar progress-bar-success" style="width: {{ peripheral.width }}%"></div>
+        <div class="progress-bar progress-bar-success" style="width: {{ peripheral.progress }}%"></div>
       </div>
       <p>
         <em>
@@ -130,7 +130,7 @@ nav.menu a {
       <p><a class="toggle-register-map" href="#">Show register map</a></p>
       <div class="register-map" id="{{ pname }}-register-map">
         <table class="table table-bordered register-map-table">
-          <tr>
+          <tbody><tr>
             <th>Offset</th>
             <th>Name</th>
             {% for i in (0..31) reversed %}
@@ -139,7 +139,7 @@ nav.menu a {
           </tr>
           {% for register in peripheral.registers %}
             <tr>
-              <td>{{ register.offset }}</td>
+              <td>{{ register.offset }}{% if register.size != 32 %} ({{ register.size }}-bit){% endif %}</td>
               <td>{{ register.name }}</td>
               {% for row in register.table %}
                 {% for field in row.fields %}
@@ -157,7 +157,7 @@ nav.menu a {
               {% endfor %}
             </tr>
           {% endfor %}
-        </table>
+        </tbody></table>
       </div>
       <div class="container registers" id="{{ pname }}-registers">
         {% for register in peripheral.registers %}
@@ -174,7 +174,7 @@ nav.menu a {
             <p>Offset: {{ register.offset }}, reset: {{ register.resetValue }}, access: {{ register.access }}</p>
             <div class="progress">
               
-              <div class="progress-bar progress-bar-success" style="width: {{ register.width }}%"></div>
+              <div class="progress-bar progress-bar-success" style="width: {{ register.progress }}%"></div>
             </div>
             <p>
               <em>
@@ -186,7 +186,7 @@ nav.menu a {
               <div class="row">
                 <div class="col-sm-10">
                   <table class="table table-striped table-bordered bitfield">
-                    {% for row in register.table %}
+                    <tbody>{% for row in register.table %}
                     <tr>
                       {% for header in row.headers %}
                       <th>{{ header }}</th>
@@ -210,7 +210,7 @@ nav.menu a {
                       {% endfor %}
                     </tr>
                     {% endfor %}
-                  </table>
+                  </tbody></table>
                   <a href="#" class="toggle-fields">Toggle Fields</a>
                 </div>
               </div>
