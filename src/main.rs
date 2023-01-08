@@ -42,7 +42,12 @@ fn hex(val: u64) -> String {
     format!("0x{val:x}")
 }
 
-fn progress_format(f: f64) -> String {
+fn progress_format(documented: i64, total: i64) -> String {
+    let f = if total > 0 {
+        100. * (documented as f64 / total as f64)
+    } else {
+        100.
+    };
     if f.round() == f {
         format!("{f:.1}")
     } else {
@@ -52,7 +57,7 @@ fn progress_format(f: f64) -> String {
 
 fn generate_index_page(devices: &Vec<Object>, writer: &mut dyn Write) -> anyhow::Result<()> {
     println!("Generating Index");
-    let template_file = include_str!("makehtml.index.template.html");
+    let template_file = include_str!("index.template.html");
     let template = liquid::ParserBuilder::with_stdlib()
         .build()
         .unwrap()
@@ -184,7 +189,6 @@ pub fn parse_register(
     rpath: &RegisterPath,
     index: &Index,
 ) -> anyhow::Result<Object> {
-    let mut fields = Vec::new();
     let mut register_fields_total = 0;
     let mut register_fields_documented = 0;
     let rsize = rtag.properties.size.unwrap_or(32);
@@ -199,6 +203,7 @@ pub fn parse_register(
 
     let mut filling = 0_u64;
 
+    let mut fields = Vec::with_capacity(flds.len());
     for &ftag in &flds {
         register_fields_total += 1;
 
@@ -308,12 +313,6 @@ pub fn parse_register(
             .then(|| object!({"headers": (0..16).rev().collect::<Vec<_>>(), "fields": table[1]})),
     ];
 
-    let progress = if register_fields_total > 0 {
-        100. * (register_fields_documented as f64 / register_fields_total as f64)
-    } else {
-        100.
-    };
-
     let offset = rtag.address_offset;
     Ok(object!({
         "name": rtag.name,
@@ -327,7 +326,7 @@ pub fn parse_register(
         "table": table,
         "fields_total": register_fields_total,
         "fields_documented": register_fields_documented,
-        "progress": progress_format(progress),
+        "progress": progress_format(register_fields_documented, register_fields_total),
     }))
 }
 
@@ -386,11 +385,6 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
             peripheral_fields_documented += register.get_i64("fields_documented").unwrap();
         }
 
-        let progress = if peripheral_fields_total > 0 {
-            100. * (peripheral_fields_documented as f64 / peripheral_fields_total as f64)
-        } else {
-            100.
-        };
         peripherals.push(object!({
             "name": pname,
             "base": format!("0x{:08x}", ptag.base_address),
@@ -398,19 +392,12 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
             "registers": registers,
             "fields_total": peripheral_fields_total,
             "fields_documented": peripheral_fields_documented,
-            "progress": progress_format(progress),
+            "progress": progress_format(peripheral_fields_documented, peripheral_fields_total),
         }));
         device_fields_total += peripheral_fields_total;
         device_fields_documented += peripheral_fields_documented;
     }
 
-    //let mut object = Object::new();
-    //object.insert("name", Value::scalar(device.name.to_string()));
-    let progress = if device_fields_total > 0 {
-        100. * (device_fields_documented as f64 / device_fields_total as f64)
-    } else {
-        100.
-    };
     Ok(object!({
         "name": device.name,
         "peripherals": peripherals,
@@ -418,7 +405,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         "fields_documented": device_fields_documented,
         "last-modified": temp,
         "svdfile": svdfile.to_str().unwrap(),
-        "progress": progress_format(progress),
+        "progress": progress_format(device_fields_documented, device_fields_total),
     }))
 }
 
@@ -473,7 +460,7 @@ fn main() -> anyhow::Result<()> {
     if !args.htmldir.exists() {
         std::fs::create_dir(&args.htmldir)?;
     }
-    let template_file = include_str!("makehtml.template.html");
+    let template_file = include_str!("template.html");
     let template = liquid::ParserBuilder::with_stdlib()
         .build()
         .unwrap()
