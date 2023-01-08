@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::linux::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use svd_parser::svd::{BitRange, Field};
 
 use anyhow::{anyhow, Context};
 use liquid::{
@@ -42,7 +43,7 @@ fn hex(val: u64) -> String {
     format!("0x{val:x}")
 }
 
-fn progress_format(documented: i64, total: i64) -> String {
+fn progress(documented: i64, total: i64) -> String {
     let f = if total > 0 {
         100. * (documented as f64 / total as f64)
     } else {
@@ -198,13 +199,33 @@ pub fn parse_register(
         .map(Access::as_str)
         .unwrap_or("Unspecified");
 
-    let mut flds = rtag.fields().collect::<Vec<_>>();
+    let mut flds = Vec::new();
+    for f in rtag.fields() {
+        match f {
+            Field::Single(f) => {
+                flds.push(Cow::Borrowed(f));
+            }
+            Field::Array(f, d) => {
+                for (i, idx) in d.indexes().enumerate() {
+                    let mut f = f.clone();
+                    f.name = format!("{} [{idx}]", f.name);
+                    f.bit_range = BitRange::from_offset_width(
+                        f.bit_offset(),
+                        f.bit_width() + (i as u32) * d.dim_increment,
+                    );
+                    f.description = f.description.map(|d| d.replace("%s", &idx));
+                    flds.push(Cow::Owned(f));
+                }
+            }
+        }
+    }
+
     flds.sort_by_key(|f| f.bit_offset());
 
     let mut filling = 0_u64;
 
     let mut fields = Vec::with_capacity(flds.len());
-    for &ftag in &flds {
+    for ftag in &flds {
         register_fields_total += 1;
 
         let fpath = rpath.new_field(&ftag.name);
@@ -231,13 +252,12 @@ pub fn parse_register(
                 };
 
                 for value in &enums.values {
-                    doc += "<strong>";
-                    doc += &value.value.unwrap().to_string();
-                    doc += ": ";
-                    doc += &value.name;
-                    doc += "</strong>: ";
-                    doc += &sanitize(value.description.as_deref().unwrap_or(""));
-                    doc += "<br>"
+                    doc += &format!(
+                        "<strong>{}: {}</strong>: {}<br>",
+                        value.value.unwrap(),
+                        value.name,
+                        sanitize(value.description.as_deref().unwrap_or(""))
+                    );
                 }
                 fdoc = Some(doc);
             } else if let Some(WriteConstraint::Range(wcrange)) = wc.as_ref() {
@@ -269,7 +289,7 @@ pub fn parse_register(
         2
     ];
 
-    for &ftag in flds.iter().rev() {
+    for ftag in flds.iter().rev() {
         let foffset = ftag.bit_offset();
         let faccs = ftag.access.map(Access::as_str).unwrap_or(raccs);
         let access = short_access(faccs);
@@ -326,7 +346,7 @@ pub fn parse_register(
         "table": table,
         "fields_total": register_fields_total,
         "fields_documented": register_fields_documented,
-        "progress": progress_format(register_fields_documented, register_fields_total),
+        "progress": progress(register_fields_documented, register_fields_total),
     }))
 }
 
@@ -392,7 +412,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
             "registers": registers,
             "fields_total": peripheral_fields_total,
             "fields_documented": peripheral_fields_documented,
-            "progress": progress_format(peripheral_fields_documented, peripheral_fields_total),
+            "progress": progress(peripheral_fields_documented, peripheral_fields_total),
         }));
         device_fields_total += peripheral_fields_total;
         device_fields_documented += peripheral_fields_documented;
@@ -405,7 +425,7 @@ pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
         "fields_documented": device_fields_documented,
         "last-modified": temp,
         "svdfile": svdfile.to_str().unwrap(),
-        "progress": progress_format(device_fields_documented, device_fields_total),
+        "progress": progress(device_fields_documented, device_fields_total),
     }))
 }
 

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Support field arrays
+
 ## [v0.1.1] - 2022-01-08
 
 - 1 row for 16-bit registers
