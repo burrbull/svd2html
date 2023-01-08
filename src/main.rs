@@ -1,5 +1,4 @@
-/// Generates a webpage for a given SVD file containing details on every
-/// peripheral and register and their level of coverage.
+use clap::Parser;
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -64,7 +63,11 @@ fn generate_index_page(devices: &Vec<Object>, writer: &mut dyn Write) -> anyhow:
     Ok(())
 }
 
-fn generate_device_page(template: &liquid::Template, device: &Object, writer: &mut dyn Write) -> anyhow::Result<()> {
+fn generate_device_page(
+    template: &liquid::Template,
+    device: &Object,
+    writer: &mut dyn Write,
+) -> anyhow::Result<()> {
     let globals = liquid::object!({ "device": device });
     template.render_to(writer, &globals)?;
     Ok(())
@@ -417,9 +420,8 @@ pub fn process_svd(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
     parse_device(svdfile).with_context(|| format!("In file {svdfile}"))
 }
 
-use clap::Parser;
-
-/// Simple program to greet a person
+/// Generates a webpage for a given SVD file containing details on every
+/// peripheral and register and their level of coverage.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -427,10 +429,14 @@ struct Args {
     htmldir: PathBuf,
 
     /// Path to patched SVD files
-    svdfiles: PathBuf,
+    svdfiles: Vec<PathBuf>,
 }
 
-pub fn generate_if_newer(template: &liquid::Template, device: &Object, htmldir: &Path) -> anyhow::Result<()> {
+pub fn generate_if_newer(
+    template: &liquid::Template,
+    device: &Object,
+    htmldir: &Path,
+) -> anyhow::Result<()> {
     let pagename = format!("{}.html", device.get_str("name").unwrap());
     let filename = htmldir.join(&pagename);
     if !filename.is_file()
@@ -450,19 +456,12 @@ pub fn generate_if_newer(template: &liquid::Template, device: &Object, htmldir: 
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let mut svdfiles = Vec::new();
-    if args.svdfiles.is_dir() {
-        for entry in std::fs::read_dir(args.svdfiles)? {
-            let entry = entry?;
-            let path = entry.path();
-            match path.extension() {
-                Some(ext) if ext == "patched" => {
-                    svdfiles.push(path);
-                }
-                _ => {}
-            }
-        }
-    }
+    let svdfiles = args
+        .svdfiles
+        .iter()
+        .filter(|&f| f.is_file())
+        .collect::<Vec<_>>();
+
     if !args.htmldir.exists() {
         std::fs::create_dir(&args.htmldir)?;
     }
