@@ -6,6 +6,7 @@ description = "Generates a webpage for a given SVD file containing details on ev
 documentation = "https://docs.rs/svd2html"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/burrbull/svd2html/"
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.68"
