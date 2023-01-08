@@ -151,8 +151,8 @@ pub fn parse_register_array(
             registers.push(register);
         }
         Register::Array(r, d) => {
-            let mut r = r.clone();
             for (i, idx) in d.indexes().enumerate() {
+                let mut r = r.clone();
                 let idxs = format!("[{idx}]");
                 r.name = r.name.replace("[%s]", &idxs).replace("%s", &idxs);
                 r.address_offset += (i as u32) * d.dim_increment;
