@@ -1,6 +1,6 @@
 [package]
 name = "svd2html"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Generates a webpage for a given SVD file containing details on every peripheral and register and their level of coverage."
 documentation = "https://docs.rs/svd2html"

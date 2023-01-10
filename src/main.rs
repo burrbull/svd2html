@@ -175,7 +175,9 @@ pub fn parse_register_array(
                 let idxs = format!("[{idx}]");
                 r.name = r.name.replace("[%s]", &idxs).replace("%s", &idxs);
                 r.address_offset += (i as u32) * d.dim_increment;
-                r.description = r.description.map(|d| d.replace("%s", &idx));
+                r.description = r
+                    .description
+                    .map(|d| d.replace("[%s]", &idx).replace("%s", &idx));
                 let register = parse_register(&r, rpath, index)
                     .with_context(|| format!("In register {}", r.name))?;
                 registers.push(register);
@@ -208,12 +210,15 @@ pub fn parse_register(
             Field::Array(f, d) => {
                 for (i, idx) in d.indexes().enumerate() {
                     let mut f = f.clone();
-                    f.name = format!("{} [{idx}]", f.name);
+                    let idxs = format!("[{idx}]");
+                    f.name = f.name.replace("[%s]", &idxs).replace("%s", &idxs);
                     f.bit_range = BitRange::from_offset_width(
                         f.bit_offset(),
                         f.bit_width() + (i as u32) * d.dim_increment,
                     );
-                    f.description = f.description.map(|d| d.replace("%s", &idx));
+                    f.description = f
+                        .description
+                        .map(|d| d.replace("[%s]", &idx).replace("%s", &idx));
                     flds.push(Cow::Owned(f));
                 }
             }
