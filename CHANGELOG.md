@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [v0.1.2] - 2022-01-09
+## [v0.1.2] - 2022-01-10
 
 - Support field arrays
 
