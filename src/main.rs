@@ -496,7 +496,12 @@ fn main() -> anyhow::Result<()> {
         .map(|f| {
             let device = process_svd(f).unwrap();
             generate_if_newer(&template, &device, &args.htmldir).unwrap();
-            device
+            object!({
+                "name": device.get("name"),
+                "progress": device.get("progress"),
+                "fields_documented": device.get("fields_documented"),
+                "fields_total": device.get("fields_total"),
+            })
         })
         .collect::<Vec<_>>();
     devices.sort_by_key(|d| d.get_str("name").map(|s| s.to_lowercase()));
