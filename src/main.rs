@@ -2,7 +2,10 @@ use clap::Parser;
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::{Read, Write};
+#[cfg(target_os = "linux")]
 use std::os::linux::fs::MetadataExt;
+#[cfg(target_os = "macos")]
+use std::os::macos::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use svd_parser::svd::{BitRange, Field};
 

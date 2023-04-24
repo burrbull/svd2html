@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Support compiling on/for macOS
+
 ## [v0.1.3] - 2023-03-26
 
 - Fix huge memory usage when many files
