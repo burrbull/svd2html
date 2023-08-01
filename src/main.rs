@@ -470,7 +470,7 @@ pub fn generate_if_newer(
 
     #[cfg(not(target_os = "windows"))]
     let file_mtime = if filename.is_file() {
-        std::fs::metadata(&filename)?.st_mtime();
+        std::fs::metadata(&filename)?.st_mtime()
     } else {
         i64::MIN
     };

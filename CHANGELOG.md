@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.1.4] - 2023-08-01
+
+- Bump dependencies
 - Support compiling on/for macOS ([#2])
 - Support compiling on/for Windows ([#4])
 
@@ -33,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## v0.0.1 - 2023-01-07
 
-[Unreleased]: https://github.com/rust-embedded/svd2rust/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/rust-embedded/svd2rust/compare/v0.1.4...HEAD
+[v0.1.4]: https://github.com/rust-embedded/svd2rust/compare/v0.1.3...v0.1.4
 [v0.1.3]: https://github.com/rust-embedded/svd2rust/compare/v0.1.2...v0.1.3
 [v0.1.2]: https://github.com/rust-embedded/svd2rust/compare/v0.1.1...v0.1.2
 [v0.1.1]: https://github.com/rust-embedded/svd2rust/compare/v0.1.0...v0.1.1
