@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Support compiling on/for macOS
+- Support compiling on/for macOS ([#2])
+- Support compiling on/for Windows ([#4])
+
+[#2]: https://github.com/burrbull/svd2html/pull/2
+[#4]: https://github.com/burrbull/svd2html/pull/4
 
 ## [v0.1.3] - 2023-03-26
 
