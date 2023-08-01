@@ -6,6 +6,8 @@ use std::io::{Read, Write};
 use std::os::linux::fs::MetadataExt;
 #[cfg(target_os = "macos")]
 use std::os::macos::fs::MetadataExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use svd_parser::svd::{BitRange, Field};
 
@@ -361,7 +363,10 @@ pub fn parse_register(
 pub fn parse_device(svdfile: impl AsRef<Path>) -> anyhow::Result<Object> {
     let svdfile = svdfile.as_ref();
     let mut file = File::open(svdfile)?;
+    #[cfg(not(target_os = "windows"))]
     let temp = file.metadata()?.st_mtime();
+    #[cfg(target_os = "windows")]
+    let temp = file.metadata()?.last_write_time() as i64;
     let mut xml = String::new();
     file.read_to_string(&mut xml)?;
     let device = svd_parser::parse_with_config(
@@ -462,9 +467,22 @@ pub fn generate_if_newer(
 ) -> anyhow::Result<()> {
     let pagename = format!("{}.html", device.get_str("name").unwrap());
     let filename = htmldir.join(&pagename);
-    if !filename.is_file()
-        || std::fs::metadata(&filename)?.st_mtime() < device.get_i64("last-modified").unwrap()
-    {
+
+    #[cfg(not(target_os = "windows"))]
+    let file_mtime = if filename.is_file() {
+        std::fs::metadata(&filename)?.st_mtime();
+    } else {
+        i64::MIN
+    };
+
+    #[cfg(target_os = "windows")]
+    let file_mtime = if filename.is_file() {
+        std::fs::metadata(&filename)?.last_write_time() as i64
+    } else {
+        i64::MIN
+    };
+
+    if !filename.is_file() || file_mtime < device.get_i64("last-modified").unwrap() {
         println!("Generating {pagename}");
         let svdfile = device.get_str("svdfile").unwrap();
         let svdfile = Path::new(svdfile.as_ref());
