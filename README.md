@@ -1,9 +1,11 @@
 [![crates.io](https://img.shields.io/crates/d/svd2html.svg)](https://crates.io/crates/svd2html)
 [![crates.io](https://img.shields.io/crates/v/svd2html.svg)](https://crates.io/crates/svd2html)
 
-# `svd2html`
+# `svd2html` (Deprecated)
 
 > Generates a webpage for a given SVD file containing details on every peripheral and register and their level of coverage
+
+**Use [`svdtools html`](https://github.com/rust-embedded/svdtools) instead**
 
 ## License
 
